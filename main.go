@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/mail"
@@ -21,6 +23,13 @@ type ReqBody struct {
 	} `json:"properties"`
 }
 
+type Attachment struct {
+	// Name must be set to a valid file name.
+	Name      string
+	Data      []byte
+	ContentID string
+}
+
 func main() {
 	http.HandleFunc("/", handle)
 	appengine.Main()
@@ -34,7 +43,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case "GET":
-		fmt.Fprintf(w, "Your mail server is operational")
+		fmt.Fprintf(w, "Operational")
 	case "POST":
 		sendMail(w, r)
 	default:
@@ -62,12 +71,24 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	subject := "Terms and Conditions - Acumen Finance"
-	body := fmt.Sprintf("<p> Dear %s,<br>,<p>Thank you for your recent loan submission and engagement via www.acumenfinance.com.au/apply,<br>,<p>This email is to confirm that your application has been received and we will contact you A.S.A.P to progress the transaction further.,<br>,Also please find attached some further information on Acumen Finance and its services and also our standard terms of engagement for your records. ", firstName)
-
-	dat, err := ioutil.ReadFile("/tmp/dat")
+	body := fmt.Sprintf("<p> Dear %s,<br><p>Thank you for your recent loan submission and engagement via www.acumenfinance.com.au/apply,<br><p>This email is to confirm that your application has been received and we will contact you A.S.A.P to progress the transaction further.<br>Also please find attached some further information on Acumen Finance and its services and also our standard terms of engagement for your records. ", firstName)
 
 	if err != nil {
 		fmt.Fprintf(w, err.Error(), 500)
+	}
+
+	dir, err := os.Getwd()
+
+	if err != nil {
+		panic(err)
+	}
+
+	file := filepath.Join(dir, "./terms_and_conditions.pdf")
+
+	data, err := ioutil.ReadFile(file)
+
+	if err != nil {
+		panic(err)
 	}
 
 	msg := &mail.Message{
@@ -75,6 +96,13 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 		To:       []string{email},
 		Subject:  subject,
 		HTMLBody: body,
+		Attachments: []mail.Attachment{
+			{
+				Name:      "terms-and-conditions.pdf",
+				Data:      data,
+				ContentID: "<fieldid>",
+			},
+		},
 	}
 
 	if err := mail.Send(ctx, msg); err != nil {
