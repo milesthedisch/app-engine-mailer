@@ -93,6 +93,7 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 
 	msg := &mail.Message{
 		Sender:   "cl@acumenfinance.com.au Commercial Loans <cl@acumenfinance.com.au>",
+		Cc:       []string{"nd@acumenfinance.com.au"},
 		To:       []string{email},
 		Subject:  subject,
 		HTMLBody: body,
