@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 
 	"google.golang.org/appengine"
+	"google.golang.org/appengine/log"
 	"google.golang.org/appengine/mail"
 )
 
@@ -36,24 +38,49 @@ func main() {
 }
 
 func handle(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+
 	if r.URL.Path != "/" {
+		log.Errorf(ctx, "Not found")
 		http.Error(w, "404 not found.", http.StatusNotFound)
 		return
 	}
 
 	switch r.Method {
 	case "GET":
-		fmt.Fprintf(w, "Operational")
+		_, err := fmt.Fprintf(w, "Operational")
+
+		if err != nil {
+			log.Errorf(ctx, "Error GET %v", err)
+			panic(err)
+		}
+
 	case "POST":
 		sendMail(w, r)
 	default:
 		fmt.Fprintf(w, "Sorry, only GET and POST methods are supported.")
+		log.Debugf(ctx, "Sorry, only GET and POST methods are supported.")
 	}
 }
 
 func sendMail(w http.ResponseWriter, r *http.Request) {
-	var reqBody ReqBody
 	ctx := appengine.NewContext(r)
+
+	var reqBody ReqBody
+
+	buf, bodyErr := ioutil.ReadAll(r.Body)
+
+	if bodyErr != nil {
+		http.Error(w, bodyErr.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rdr1 := ioutil.NopCloser(bytes.NewBuffer(buf))
+	rdr2 := ioutil.NopCloser(bytes.NewBuffer(buf))
+
+	log.Infof(ctx, "BODY: %q", rdr1)
+
+	r.Body = rdr2
 
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&reqBody)
@@ -66,9 +93,12 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 	firstName, email := reqBody.Properties.Firstname.Value, reqBody.Properties.Email.Value
 
 	if firstName == "" || email == "" {
+		log.Errorf(ctx, "Bad request not correct data")
 		http.Error(w, "BAD REQUEST NO CORRECT DATA", 400)
 		return
 	}
+
+	log.Debugf(ctx, "Sending mail to %s", email)
 
 	subject := "Terms and Conditions - Acumen Finance"
 	body := fmt.Sprintf("<p> Dear %s,<br><p>Thank you for your recent loan submission and engagement via www.acumenfinance.com.au/apply,<br><p>This email is to confirm that your application has been received and we will contact you A.S.A.P to progress the transaction further.<br>Also please find attached some further information on Acumen Finance and its services and also our standard terms of engagement for your records. ", firstName)
@@ -99,7 +129,7 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 		HTMLBody: body,
 		Attachments: []mail.Attachment{
 			{
-				Name:      "terms-and-conditions.pdf",
+				Name:      "terms-and-conditions.html",
 				Data:      data,
 				ContentID: "<fieldid>",
 			},
