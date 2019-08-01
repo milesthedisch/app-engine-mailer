@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -63,32 +64,36 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func serverError(ctx context.Context, m string, w http.ResponseWriter, err error) {
+	if err != nil {
+		log.Errorf(ctx, "%s %v", m, err.Error())
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	return
+}
+
 func sendMail(w http.ResponseWriter, r *http.Request) {
+
 	ctx := appengine.NewContext(r)
+
+	dir, err := os.Getwd()
+	serverError(ctx, "DIRECTORY ERROR", w, err)
 
 	var reqBody ReqBody
 
 	buf, bodyErr := ioutil.ReadAll(r.Body)
-
-	if bodyErr != nil {
-		http.Error(w, bodyErr.Error(), http.StatusInternalServerError)
-		return
-	}
+	serverError(ctx, "READ BUFFER ERROR", w, bodyErr)
 
 	rdr1 := ioutil.NopCloser(bytes.NewBuffer(buf))
 	rdr2 := ioutil.NopCloser(bytes.NewBuffer(buf))
 
 	log.Infof(ctx, "BODY: %q", rdr1)
 
-	r.Body = rdr2
-
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&reqBody)
-
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
+	decoder := json.NewDecoder(rdr2)
+	decodeErr := decoder.Decode(&reqBody)
+	serverError(ctx, "DECODER ERROR", w, decodeErr)
 
 	firstName, email := reqBody.Properties.Firstname.Value, reqBody.Properties.Email.Value
 
@@ -103,23 +108,10 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 	subject := "Terms and Conditions - Acumen Finance"
 	body := fmt.Sprintf("<p> Dear %s,<br><p>Thank you for your recent loan submission and engagement via www.acumenfinance.com.au/apply,<br><p>This email is to confirm that your application has been received and we will contact you A.S.A.P to progress the transaction further.<br>Also please find attached some further information on Acumen Finance and its services and also our standard terms of engagement for your records. ", firstName)
 
-	if err != nil {
-		fmt.Fprintf(w, err.Error(), 500)
-	}
-
-	dir, err := os.Getwd()
-
-	if err != nil {
-		panic(err)
-	}
-
 	file := filepath.Join(dir, "./terms_and_conditions.pdf")
 
 	data, err := ioutil.ReadFile(file)
-
-	if err != nil {
-		panic(err)
-	}
+	serverError(ctx, "READ FILE ERROR", w, err)
 
 	msg := &mail.Message{
 		Sender:   "cl@acumenfinance.com.au Commercial Loans <cl@acumenfinance.com.au>",
@@ -137,6 +129,7 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := mail.Send(ctx, msg); err != nil {
+		log.Errorf(ctx, "%v", err.Error())
 		fmt.Fprintf(w, "Coudn't send email: %v", err.Error())
 	}
 }
