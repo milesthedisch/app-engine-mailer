@@ -83,13 +83,26 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 
 	var reqBody ReqBody
 
-	buf, bodyErr := ioutil.ReadAll(r.Body)
-	serverError(ctx, "READ BUFFER ERROR", w, bodyErr)
+	buf, _ := ioutil.ReadAll(r.Body)
 
-	rdr1 := ioutil.NopCloser(bytes.NewBuffer(buf))
+	log.Debugf(ctx, "%s", buf)
+
+	var result map[string]interface{}
+	json.Unmarshal(buf, &result)
+
+	log.Debugf(ctx, "Result: %+v", result)
+
+	props := result["properties"].(map[string]interface{})
+
+	log.Debugf(ctx, "Properties %+v", result)
+
+	for v, k := range props {
+		log.Infof(ctx, "\n Key: %+v \n Value: %+v", v, k.(map[string]interface{})["value"])
+	}
+
+	// // somehow this makes the buffer into json
+	// rdr1 := ioutil.NopCloser(bytes.NewBuffer(buf))
 	rdr2 := ioutil.NopCloser(bytes.NewBuffer(buf))
-
-	log.Infof(ctx, "BODY: %q", rdr1)
 
 	decoder := json.NewDecoder(rdr2)
 	decodeErr := decoder.Decode(&reqBody)
@@ -97,8 +110,10 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 
 	firstName, email := reqBody.Properties.Firstname.Value, reqBody.Properties.Email.Value
 
+	log.Infof(ctx, "reqBody: %+v", reqBody)
+
 	if firstName == "" || email == "" {
-		log.Errorf(ctx, "Bad request not correct data")
+		log.Errorf(ctx, "Bad request not correct data, data: %v %v", firstName, email)
 		http.Error(w, "BAD REQUEST NO CORRECT DATA", 400)
 		return
 	}
